@@ -4,7 +4,7 @@ import pandas as pd
 from prophet import Prophet
 
 
-def fit_prophet(df, number_future_days, file_name):
+def fit_prophet(df, number_future_days, file_name="./static/graphs/prophet_output.html"):
     # Rename columns to 'ds' and 'y' to be compatible with Prophet
     df = df.rename(columns={'timestamp': 'ds', 'price': 'y'})
 
@@ -62,6 +62,6 @@ if __name__ == "__main__":
     df = fetch_crypto_price_coingecko(symbol=symbol, vs_currency=vc_currency, days=n_days)
 
     if not df.empty:
-        signal = fit_prophet(df, 300, 'btc_forecast_august_27_')
+        signal = fit_prophet(df, 300)
     else:
         print("Failed to retrieve data for Prophet model.")
