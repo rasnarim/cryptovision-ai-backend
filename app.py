@@ -7,10 +7,10 @@ app = Flask(__name__)
 # Directory to save HTML files
 GRAPH_DIR = os.path.join(os.getcwd(), 'static', 'graphs')
 
-# Root route to display a welcome message
-@app.route('/')
-def home():
-    return "Welcome to the Crypto Prediction Service"
+# # Root route to display a welcome message
+# @app.route('/')
+# def home():
+#     return "Welcome to the Crypto Prediction Service"
 
 @app.route('/generate_graph', methods=['POST'])
 def generate_graph():
