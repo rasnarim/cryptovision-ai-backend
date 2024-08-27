@@ -4,7 +4,7 @@ import pandas as pd
 from prophet import Prophet
 
 
-def fit_prophet(df, number_future_days, file_name="./static/graphs/prophet_output.html"):
+def fit_prophet(df, number_future_days, file_name="./static/graphs/prophet_output"):
     # Rename columns to 'ds' and 'y' to be compatible with Prophet
     df = df.rename(columns={'timestamp': 'ds', 'price': 'y'})
 
