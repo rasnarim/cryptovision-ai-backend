@@ -10,6 +10,9 @@ CORS(app)
 # Directory to save HTML files
 GRAPH_DIR = os.path.join(os.getcwd(), 'static', 'graphs')
 
+@app.route('/')
+def home():
+    return "CryptoVision AI Backend is Running"
 
 @app.route('/generate_graph', methods=['POST'])
 def generate_graph():
