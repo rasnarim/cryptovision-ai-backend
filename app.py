@@ -9,6 +9,11 @@ from flask import send_from_directory
 
 app = Flask(__name__)
 
+
+@app.route('/')
+def home():
+    return "Welcome to CryptovisionAI"
+
 def fetch_crypto_price_coingecko(symbol="bitcoin", vs_currency="usd", days="365"):
     """
     Fetches historical cryptocurrency price data from the CoinGecko API.
