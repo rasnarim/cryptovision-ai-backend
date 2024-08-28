@@ -98,7 +98,7 @@ def fit_prophet(df, number_future_days, file_name="./static/graphs/prophet_outpu
     p.add_layout(band)
 
     # Format the x-axis to show dates clearly
-    p.xaxis.formatter = DatetimeTickFormatter(days=["%d %b %Y"])
+    p.xaxis.formatter = DatetimeTickFormatter(days="%d %b %Y")
 
     # Output the plot to an HTML file
     output_file(file_name + '.html')
