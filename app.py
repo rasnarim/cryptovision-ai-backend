@@ -1,43 +1,69 @@
-from flask import Flask, request, jsonify, send_from_directory
-import subprocess
-import os
-
+# /backend/app.py
+from flask import Flask, jsonify, request
 from flask_cors import CORS
+import pandas as pd
+import numpy as np
+from fbprophet import Prophet
+import matplotlib.pyplot as plt
+import io
+import base64
 
 app = Flask(__name__)
-
 CORS(app)
-# Directory to save HTML files
-GRAPH_DIR = os.path.join(os.getcwd(), 'static', 'graphs')
 
+# Initial routes and configuration
 @app.route('/')
-def home():
-    return "CryptoVision AI Backend is Running"
+def index():
+    return "Welcome to CryptoVision AI Backend!"
 
-@app.route('/generate_graph', methods=['POST'])
-def generate_graph():
-    data = request.json
-    option = data.get('option')
-    filename = "prophet_output.html"
+# Endpoint to fetch available cryptocurrencies
+@app.route('/cryptos', methods=['GET'])
+def get_cryptos():
+    cryptos = ["Bitcoin", "Ethereum", "Litecoin"]
+    return jsonify(cryptos)
 
-    try:
-        if option == 'option1':
-            # Run the script to fetch data and generate a graph using Facebook Prophet
-            if not os.path.exists(GRAPH_DIR):
-                os.makedirs(GRAPH_DIR)
-            subprocess.run(["python", "facebook_prophet.py", os.path.join(GRAPH_DIR, filename)], check=True)
-        elif option == 'option2':
-            subprocess.run(["python", "your_script_for_algorithm2.py"], check=True)
-
-        return jsonify(success=True, graph_url=f'/graphs/{filename}')
-    except subprocess.CalledProcessError as e:
-        return jsonify(success=False, error=str(e))
+# Endpoint to fetch available algorithms
+@app.route('/algorithms', methods=['GET'])
+def get_algorithms():
+    algorithms = ["Facebook Prophet"]
+    return jsonify(algorithms)
 
 
-@app.route('/graphs/<filename>')
-def serve_graph(filename):
-    return send_from_directory(GRAPH_DIR, filename)
+# /backend/app.py (Continued)
 
+# Endpoint to handle prediction requests
+@app.route('/predict', methods=['POST'])
+def predict():
+    data = request.get_json()
+    crypto = data['crypto']
+    algorithm = data['algorithm']
 
-if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+    if algorithm == "Facebook Prophet":
+        # Load and process the dataset
+        df = pd.read_csv(f'data/{crypto}.csv')
+        df['ds'] = pd.to_datetime(df['Date'])  # Prophet requires 'ds' as the date column
+        df['y'] = df['Price']  # Prophet requires 'y' as the target column
+
+        # Initialize and fit the Prophet model
+        model = Prophet()
+        model.fit(df[['ds', 'y']])
+
+        # Create a DataFrame to hold future dates
+        future = model.make_future_dataframe(periods=30)  # Forecasting for the next 30 days
+        forecast = model.predict(future)
+
+        # Visualization
+        plt.figure(figsize=(10, 5))
+        model.plot(forecast)
+        plt.title(f'Price Prediction for {crypto} using Facebook Prophet')
+
+        # Convert plot to image for frontend display
+        img = io.BytesIO()
+        plt.savefig(img, format='png')
+        img.seek(0)
+        graph_url = base64.b64encode(img.getvalue()).decode()
+        graph_url = 'data:image/png;base64,' + graph_url
+
+        return jsonify({"graph": graph_url})
+
+    return jsonify({"error": "Invalid algorithm selected"}), 400
