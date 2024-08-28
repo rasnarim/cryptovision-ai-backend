@@ -3,7 +3,7 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 import pandas as pd
 import numpy as np
-from fbprophet import Prophet
+from prophet import Prophet
 import matplotlib.pyplot as plt
 import io
 import base64
