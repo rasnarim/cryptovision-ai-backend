@@ -2,8 +2,11 @@ from flask import Flask, request, jsonify, send_from_directory
 import subprocess
 import os
 
+from flask_cors import CORS
+
 app = Flask(__name__)
 
+CORS(app)
 # Directory to save HTML files
 GRAPH_DIR = os.path.join(os.getcwd(), 'static', 'graphs')
 
