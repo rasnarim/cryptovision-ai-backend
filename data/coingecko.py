@@ -34,8 +34,9 @@ class CryptoDataFetcher:
         response = requests.get(url, params=params)
         if response.status_code == 200:
             data = response.json()
-            with open(self.filepath, 'w') as file:
-                json.dump(data, file)
+            # don't write file on the sever!!!!
+            # with open(self.filepath, 'w') as file:
+            #     json.dump(data, file)
             prices = [price[1] for price in data['prices']]
             datetimes = [datetime.utcfromtimestamp(price[0] / 1000).strftime('%Y-%m-%d') for price in data['prices']]
             return datetimes, prices
