@@ -1,140 +1,104 @@
-from flask import Flask, render_template, request
-from bokeh.plotting import output_file, save, figure
-from bokeh.models import DatetimeTickFormatter, Band, ColumnDataSource
-import pandas as pd
-from prophet import Prophet
-import requests
+import logging
+from flask import Flask, render_template, request, jsonify
+from algorithms.linear_regression import LinearRegressionPredictor
+from algorithms.prophet_algorithm import ProphetPredictor
+from data.coingecko import CryptoDataFetcher
+from visualization.bokeh_plot import create_bokeh_plot
+from bokeh.plotting import output_file, save  # Import these functions
 import os
-from flask import send_from_directory
+import pandas as pd
+
+# Configure logging to log errors only
+logging.basicConfig(
+    level=logging.ERROR,  # Set this to ERROR to capture only errors
+    filename='app.log',  # Specify the log file name
+    filemode='a',  # Append to the log file, use 'w' to overwrite
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Adjust logging level for specific libraries, if necessary
+logging.getLogger('werkzeug').setLevel(logging.ERROR)  # Suppress Werkzeug logs
+logging.getLogger('cmdstanpy').setLevel(logging.ERROR)  # Suppress cmdstanpy logs
+logging.getLogger('prophet').setLevel(logging.ERROR)  # Suppress Prophet logs
 
 app = Flask(__name__)
 
 
 @app.route('/')
-def home():
-    return "Welcome to CryptovisionAI"
+def index():
+    logger.info("Serving the index.html page")
+    return render_template('index.html')
 
-def fetch_crypto_price_coingecko(symbol="bitcoin", vs_currency="usd", days="365"):
-    """
-    Fetches historical cryptocurrency price data from the CoinGecko API.
 
-    Parameters:
-    symbol (str): Cryptocurrency symbol (e.g., 'bitcoin').
-    vs_currency (str): The currency to compare against (e.g., 'usd').
-    days (str): Number of days to fetch data for (e.g., '365' for the last year).
+@app.route('/get_prediction', methods=['POST'])
+def get_prediction():
+    try:
+        data = request.json
+        logger.info(f"Received prediction request with data: {data}")
 
-    Returns:
-    DataFrame: A DataFrame containing the historical prices with columns ['timestamp', 'price'].
-    """
-    url = f"https://api.coingecko.com/api/v3/coins/{symbol}/market_chart"
-    params = {
-        "vs_currency": vs_currency,
-        "days": days,
-    }
-    response = requests.get(url, params=params)
+        crypto = data['crypto']
+        algorithm = data['algorithm']
+        start_time = int(data['start_time'])
+        future_time = int(data['future_time'])
 
-    if response.status_code == 200:
-        data = response.json()
-        if 'prices' in data:
-            prices = data['prices']
-            df = pd.DataFrame(prices, columns=['timestamp', 'price'])
-            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-            return df
+        # Fetch historical data
+        logger.info(f"Fetching historical data for {crypto} over the past {start_time} days")
+        fetcher = CryptoDataFetcher(crypto, days=start_time)
+        historical_dates, historical_prices = fetcher.get_data()
+
+        # Run the selected algorithm
+        if algorithm == "Linear Regression":
+            logger.info("Running Linear Regression prediction")
+            predictor = LinearRegressionPredictor()
+            historical_dates, future_dates, predictions, upper_bound, lower_bound = predictor.predict(
+                historical_dates, historical_prices, future_time)
+        elif algorithm == "Prophet":
+            logger.info("Running Prophet prediction")
+            predictor = ProphetPredictor()
+            historical_dates, future_dates, predictions, upper_bound, lower_bound = predictor.predict(
+                historical_dates, historical_prices, future_time)
         else:
-            print("Error: 'prices' key not found in the API response.")
-            return pd.DataFrame()
-    else:
-        print(f"Error: API request failed with status code {response.status_code}")
-        return pd.DataFrame()
+            logger.error(f"Unsupported algorithm: {algorithm}")
+            return jsonify({'error': f"Unsupported algorithm: {algorithm}"}), 400
 
-def fit_prophet(df, number_future_days, file_name="./static/graphs/prophet_output"):
-    """
-    Fits a Prophet model to the provided time series data, generates predictions,
-    and plots the results using Bokeh.
+        # Generate Bokeh plot
+        logger.info("Creating Bokeh plot...")
+        p, plot_html = create_bokeh_plot(historical_dates, historical_prices, future_dates, predictions,
+                                         upper_bound, lower_bound, crypto, algorithm)
 
-    Parameters:
-    df (DataFrame): DataFrame containing the historical data with 'timestamp' and 'price' columns.
-    number_future_days (int): Number of days into the future to forecast.
-    file_name (str): Path and file name to save the output HTML file of the plot.
+        # Define the output file path for the plot
+        output_dir = "generated_html"
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+            logger.info(f"Created directory: {output_dir}")
 
-    Returns:
-    DataFrame: The forecasted data generated by the Prophet model.
-    """
-    # Rename columns to 'ds' (date) and 'y' (value) as required by Prophet
-    df = df.rename(columns={'timestamp': 'ds', 'price': 'y'})
+        plot_file_path = os.path.join(output_dir, f"{crypto}_{algorithm.lower()}_plot.html")
 
-    # Ensure the 'ds' column is in datetime format
-    df['ds'] = pd.to_datetime(df['ds'])
+        # Save the Bokeh plot as an HTML file
+        output_file(plot_file_path)
+        save(p)  # Save the figure object instead of the HTML string
+        logger.info(f"Plot saved to: {plot_file_path}")
 
-    # Initialize the Prophet model
-    model = Prophet()
+        # Prepare dates for the response
+        historical_dates = historical_dates.strftime('%Y-%m-%d').tolist() if isinstance(historical_dates, pd.Series) else [date.strftime('%Y-%m-%d') for date in historical_dates]
+        future_dates = future_dates.strftime('%Y-%m-%d').tolist() if isinstance(future_dates, pd.Series) else [date.strftime('%Y-%m-%d') for date in future_dates]
 
-    # Fit the Prophet model on the historical data
-    model.fit(df)
+        logger.info("Successfully generated prediction response")
+        return jsonify({
+            'historical': historical_prices,  # No need to use .tolist() here
+            'predictions': predictions.tolist(),  # Convert NumPy arrays to lists
+            'upper_bound': upper_bound.tolist(),  # Convert NumPy arrays to lists
+            'lower_bound': lower_bound.tolist(),  # Convert NumPy arrays to lists
+            'historical_dates': historical_dates,
+            'future_dates': future_dates,
+            'plot_html': plot_html,  # This is still returned as part of the JSON response
+            'plot_file_path': plot_file_path  # Path to the saved plot file
+        })
 
-    # Create a DataFrame for future dates (including the forecast period)
-    future = model.make_future_dataframe(periods=number_future_days)
-
-    # Generate the forecast using the Prophet model
-    forecast = model.predict(future)
-
-    # Prepare the forecast data for Bokeh plotting
-    source = ColumnDataSource(forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']])
-
-    # Create a Bokeh plot to visualize the data
-    p = figure(x_axis_type="datetime", title="Bitcoin Price Prediction", width=800, height=400)
-    p.xaxis.axis_label = 'Date'
-    p.yaxis.axis_label = 'Price'
-
-    # Plot the historical data in blue
-    p.line(df['ds'], df['y'], legend_label="Historical", line_color="blue")
-
-    # Plot the forecasted data in orange
-    p.line('ds', 'yhat', source=source, legend_label="Forecast", line_color="orange")
-
-    # Add error bands to show the uncertainty in the forecast
-    band = Band(base='ds', lower='yhat_lower', upper='yhat_upper', source=source,
-                level='underlay', fill_alpha=0.2, line_width=1, line_color='orange')
-    p.add_layout(band)
-
-    # Format the x-axis to show dates clearly
-    p.xaxis.formatter = DatetimeTickFormatter(days="%d %b %Y")
-
-    # Output the plot to an HTML file
-    output_file(file_name + '.html')
-    save(p)
-
-    return forecast
-
-
-@app.route('/forecast')
-def bokeh_forecast():
-    """
-    Flask route to generate and display the forecast for a given cryptocurrency.
-
-    Retrieves the historical data, runs the Prophet model to forecast future prices,
-    and serves the resulting plot as an HTML file from the static directory.
-    """
-    # Get query parameters for cryptocurrency symbol, historical days, and forecast periods
-    crypto_name = request.args.get('crypto', 'bitcoin')  # Default to 'bitcoin'
-    days = request.args.get('days', '365')  # Default to last 365 days
-    periods = int(request.args.get('periods', '365'))  # Default to forecasting 30 days ahead
-
-    # Fetch historical price data for the specified cryptocurrency
-    df = fetch_crypto_price_coingecko(symbol=crypto_name, days=days)
-
-    # Check if the data fetching was successful
-    if not df.empty:
-        # Generate forecast and save the plot as an HTML file in ./static/graphs/
-        file_name = os.path.join(app.root_path, 'static', 'graphs', 'prophet_output')
-        fit_prophet(df, number_future_days=periods, file_name=file_name)
-
-        # Serve the HTML file from the static directory
-        return send_from_directory('static/graphs', 'prophet_output.html')
-    else:
-        # Handle error if data fetching failed
-        return "Failed to retrieve data for Prophet model.", 500
-
+    except Exception as e:
+        logger.exception("An error occurred during the prediction process")
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)

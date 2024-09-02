@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/cryptovision-ai-backend.iml" filepath="$PROJECT_DIR$/.idea/cryptovision-ai-backend.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/CryptoVisionAI_test_1.iml" filepath="$PROJECT_DIR$/.idea/CryptoVisionAI_test_1.iml" />
     </modules>
   </component>
 </project>
